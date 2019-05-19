@@ -13,27 +13,17 @@ public class MechantLoyalty implements ImplementMe {
     /**
      * List of all accounts for the merchant, TODO: replace with datastore
      */
-    private List<Account> accounts;
-
-    /**
-     * The constructor for merchant loyalty when no current customer accounts exist.
-     * @param schemes the list of Scheme objects to set all schemes available for the merchant
-     */
-    public MechantLoyalty(final List<Scheme> schemes) {
-        MechantLoyalty(schemes, new ArrayList<Account>());
-    }
+    private List<Account> accounts = new ArrayList<>();
 
     /**
      * The primary constructor called once at runtime to set the
      * available schemes for the merchant.
      * @param schemes the list of Scheme objects to set all schemes available for the merchant
-     * @param accounts the list of accounts already associated with the merchant
      */
-    public MechantLoyalty(final List<Scheme> schemes, final List<Account> accounts) {
-        this.schemes = Objects.requireNonNull(schemes);
-        this.accounts = accounts;
+    public MechantLoyalty(final List<Scheme> schemes) {
+        this.schemes = schemes;
     }
-
+    
     @Override
     public void setSchemes(final List<Scheme> schemes) {
         this.schemes = Objects.requireNonNull(schemes);
@@ -59,14 +49,17 @@ public class MechantLoyalty implements ImplementMe {
         List<ApplyResponse> Responses = new ArrayList<>();
         List<Item> items = receipt.getItems();
 
-        Account customerAccount = getAccountFromReceipt(receipt);
+        Account customerAccount = getAccountFromId(receipt.getAccountId());
+        Map<UUID, Integer> allStamps = customerAccount.getStamps();
+        Map<UUID, List<Long>> schemePayments = customerAccount.getAllPayments();
         for (Scheme scheme: schemes) {
+            UUID schemeId = scheme.getId();
 
             // For each scheme, calculate how many items were purchased in it, add to current stamp number.
             int stampsGained = getStampsGainedFromReceipt(receipt, scheme);
 
             // Get the current number of stamps the customer has, if none. return 0
-            int currentStamps = customerAccount.getStamps().getOrDefault(scheme.getId(), 0);
+            int currentStamps = customerAccount.getStamps().getOrDefault(schemeId, 0);
 
             // Calculate number of payments customer is to receive, and payment item didn't count as a stamp.
             int totalStamps = stampsGained + currentStamps;
@@ -77,41 +70,70 @@ public class MechantLoyalty implements ImplementMe {
                 totalStamps = totalStamps - (scheme.getMaxStamps() + 1);
             }
 
+            List<Long> newPayments = calculatePaymentsToMake(items, numberOfPayments);
+            List<Long> allPayments = new ArrayList<>();
+            List<Long> existingPayments = schemePayments.get(schemeId);
+            Optional.ofNullable(newPayments).ifPresent(allPayments::addAll);
+            Optional.ofNullable(existingPayments).ifPresent(allPayments::addAll);
+
+            schemePayments.put(schemeId, allPayments);
+            allStamps.put(schemeId, totalStamps);
+
             Responses.add(new ApplyResponse(
                     scheme.getId(),
                     totalStamps,
                     (stampsGained - currentStamps - numberOfPayments),
-                    calculatePaymentsToMake(items, numberOfPayments)));
+                    newPayments));
+        }
+
+        // Create new account as unable to call accounts.get(index).setAllPayments() as kotlin models do not appears to have standard setters.
+        Account newAccount = new Account(customerAccount.getId(), allStamps, schemePayments);
+        try {
+            accounts.set(accounts.indexOf(customerAccount), newAccount);
+        } catch (IndexOutOfBoundsException e) {
+            accounts.add(newAccount);
         }
 
         return Responses;
     }
 
+    /**
+     * Retrieve and return the current state for an account for all the active schemes.  If they have never used a
+     * scheme before then a zero state should be returned (ie 0 stamps given, 0 payments, current stamp as 0.
+     *
+     * Should return one `StateResponse` instance for each scheme
+     */
     @Override
     public List<StateResponse> state(final UUID accountId) {
 
-//        List<StateResponse> customerState;
-//        for (Scheme scheme : schemes) {
-//            StateResponse schemeState = new StateResponse(scheme.getId(), scheme.);
-//            schemeState.component1(scheme.getId());
-//
-//        }
-        return null;
+        List<StateResponse> customerState = new ArrayList<>();
+        Account customerAccount = getAccountFromId(accountId);
+
+        for (Scheme scheme: schemes) {
+            UUID schemeId = scheme.getId();
+            StateResponse response = new StateResponse(
+                    schemeId,
+                    customerAccount.getStamps().getOrDefault(schemeId, 0),
+                    customerAccount.getAllPayments().getOrDefault(schemeId, new ArrayList<Long>()));
+            customerState.add(response);
+        }
+
+        return customerState;
     }
 
     /**
-     * Find the account specified in the receipt, or create a new account for customer if it's not found.
-     * @param receipt the receipt for the customer.
+     * Find the account by the specified Id, or create a new account for the given customer if it's not found.
+     * @param accountId the accountId for the customer.
      * @return the customers Account object.
      */
-    private Account getAccountFromReceipt (final Receipt receipt) {
+    private Account getAccountFromId (final UUID accountId) {
 
         for (Account account: accounts) {
-            if (account.getId().equals(receipt.getAccountId())) {
+            if (account.getId().equals(accountId)) {
                 return account;
             }
         }
-        return new Account(receipt.getAccountId(), receipt.getMerchantId(), null);
+        return new Account(accountId, new HashMap<>(), new HashMap<>());
     }
 
     /**
@@ -123,7 +145,7 @@ public class MechantLoyalty implements ImplementMe {
     private int getStampsGainedFromReceipt(final Receipt receipt, final Scheme scheme) {
         int stamps = 0;
         for (Item item: receipt.getItems()) {
-            stamps = scheme.getSkus().contains(item.getSku()) ? stamps++ : stamps; //If the item is in the scheme, increment stamps
+            stamps = scheme.getSkus().contains(item.getSku()) ? stamps + 1 : stamps; //If the item is in the scheme, increment stamps
         }
         return stamps;
     }

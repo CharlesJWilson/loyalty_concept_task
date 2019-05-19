@@ -11,10 +11,12 @@ import io.kotlintest.matchers.collections.shouldHaveSize
 import io.kotlintest.shouldBe
 import io.kotlintest.specs.StringSpec
 import java.util.UUID
+import com.flux.test.MechantLoyalty
 
 class LoyaltySpec : StringSpec() {
 
-    val implementation: ImplementMe = TODO("Create your instance here, if you are a Java person, drop the new keyword and the ;.  e.g. `new MyImpl();` becomes `MyImpl(schemes)`")
+//  TODO("Create your instance here, if you are a Java person, drop the new keyword and the ;.  e.g. `new MyImpl();` becomes `MyImpl(schemes)`")
+    val implementation: ImplementMe = MechantLoyalty(schemes)
 
     init {
         "Applies a stamp" {

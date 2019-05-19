@@ -17,7 +17,7 @@ data class StateResponse(
     val currentStampCount: Int,
 
     /**
-     * The payments that have been awareded to this account for this scheme
+     * The payments that have been awarded to this account for this scheme
      */
     val payments: List<Long>
 )
