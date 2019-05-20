@@ -23,7 +23,7 @@ public class MechantLoyalty implements ImplementMe {
     public MechantLoyalty(final List<Scheme> schemes) {
         this.schemes = schemes;
     }
-    
+
     @Override
     public void setSchemes(final List<Scheme> schemes) {
         this.schemes = Objects.requireNonNull(schemes);
@@ -82,7 +82,7 @@ public class MechantLoyalty implements ImplementMe {
             Responses.add(new ApplyResponse(
                     scheme.getId(),
                     totalStamps,
-                    (stampsGained - currentStamps - numberOfPayments),
+                    (stampsGained - numberOfPayments),
                     newPayments));
         }
 
@@ -145,7 +145,11 @@ public class MechantLoyalty implements ImplementMe {
     private int getStampsGainedFromReceipt(final Receipt receipt, final Scheme scheme) {
         int stamps = 0;
         for (Item item: receipt.getItems()) {
-            stamps = scheme.getSkus().contains(item.getSku()) ? stamps + 1 : stamps; //If the item is in the scheme, increment stamps
+            int quantity = item.getQuantity();
+            //If the item is in the scheme, increment stamps
+            if (scheme.getSkus().stream().anyMatch(str -> str.trim().equals(item.getSku()))) {
+                stamps = stamps + quantity;
+            }
         }
         return stamps;
     }
@@ -160,12 +164,18 @@ public class MechantLoyalty implements ImplementMe {
         int paymentsLeft = paymentsToMake;
         List<Long> paymentsGiven = new ArrayList<>();
         if (paymentsLeft > 0) {
-            List<Item> sortedItems = items;
+            List<Item> sortedItems = new ArrayList<>(items);
             // Sort the items on their price ascending to ensure the first items are the cheapest
             sortedItems.sort(Comparator.comparing(Item::getPrice));
             while (paymentsLeft > 0) {
-                paymentsGiven.add(sortedItems.get(0).getPrice());
-                sortedItems.remove(0);
+                Item firstItem = sortedItems.get(0);
+                paymentsGiven.add(firstItem.getPrice());
+                if (firstItem.getQuantity() <=1) {
+                    sortedItems.remove(0);
+                } else {
+                    Item newItem = new Item(firstItem.getSku(), firstItem.getPrice(), (firstItem.getQuantity() - 1));
+                    sortedItems.set(0, newItem);
+                }
                 paymentsLeft--;
             }
         }
